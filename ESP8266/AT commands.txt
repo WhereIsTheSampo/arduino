@@ -1,0 +1,6 @@
+
+# set to softAP mode
+AT+CWMODE_CUR=2
+
+# set AP ssid, key, channel, and aut
+AT+CWSAP_CUR="BOB_ESP","TESTING",11,3
