@@ -18,6 +18,8 @@
 #define BUTTON_2  5   //Button 2 cycles visualization modes
 #define BUTTON_3  4   //Button 3 toggles shuffle mode (automated changing of color and visual)
 
+#define OFFSET 7
+
 //////////<Globals>
 //  These values either need to be remembered from the last pass of loop() or
 //  need to be accessed by several functions in one pass, so they need to be global.
@@ -199,6 +201,10 @@ uint32_t ColorPalette(float num) {
 //      In essence, this makes louder volumes brighter, and lower volumes dimmer, to be more visually distinct.
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+uint32_t shiftPixel(uint32_t original) 
+{
+    return ( original + 60 - OFFSET ) % LED_TOTAL;
+}
 
 //PULSE
 //Pulse from center of the strand
@@ -221,6 +227,8 @@ void Pulse() {
 
     for (int i = start; i < finish; i++) {
 
+      uint32_t shifted = shiftPixel(i);
+     
       //"damp" creates the fade effect of being dimmer the farther the pixel is from the center of the strand.
       //  It returns a value between 0 and 1 that peaks at 1 at the center of the strand and 0 at the ends.
       float damp = sin((i - start) * PI / float(finish - start));
@@ -229,7 +237,7 @@ void Pulse() {
       damp = pow(damp, 2.0);
 
       //Fetch the color at the current pixel so we can see if it's dim enough to overwrite.
-      uint32_t col2 = strand.getPixelColor(i);
+      uint32_t col2 = strand.getPixelColor(shifted);
 
       //Takes advantage of one for loop to do the following:
       // Appropriatley adjust the brightness of this pixel using location, volume, and "knob"
@@ -244,7 +252,7 @@ void Pulse() {
       avgCol /= 3.0, avgCol2 /= 3.0;
 
       //Compare the average colors as "brightness". Only overwrite dim colors so the fade effect is more apparent.
-      if (avgCol > avgCol2) strand.setPixelColor(i, strand.Color(colors[0], colors[1], colors[2]));
+      if (avgCol > avgCol2) strand.setPixelColor(shifted, strand.Color(colors[0], colors[1], colors[2]));
     }
   }
   //This command actually shows the lights. If you make a new visualization, don't forget this!
@@ -261,6 +269,8 @@ void PalettePulse() {
     int start = LED_HALF - (LED_HALF * (volume / maxVol));
     int finish = LED_HALF + (LED_HALF * (volume / maxVol)) + strand.numPixels() % 2;
     for (int i = start; i < finish; i++) {
+      uint32_t shifted = shiftPixel(i);
+      
       float damp = sin((i - start) * PI / float(finish - start));
       damp = pow(damp, 2.0);
 
@@ -270,7 +280,7 @@ void PalettePulse() {
       val += gradient;
       uint32_t col = ColorPalette(val);
 
-      uint32_t col2 = strand.getPixelColor(i);
+      uint32_t col2 = strand.getPixelColor(shifted);
       uint8_t colors[3];
       float avgCol = 0, avgCol2 = 0;
       for (int k = 0; k < 3; k++) {
@@ -279,7 +289,7 @@ void PalettePulse() {
         avgCol2 += split(col2, k);
       }
       avgCol /= 3.0, avgCol2 /= 3.0;
-      if (avgCol > avgCol2) strand.setPixelColor(i, strand.Color(colors[0], colors[1], colors[2]));
+      if (avgCol > avgCol2) strand.setPixelColor(shifted, strand.Color(colors[0], colors[1], colors[2]));
     }
   }
   strand.show();
@@ -338,7 +348,7 @@ void Traffic() {
 
       //Set the dot to its new position and respective color.
       //  I's old position's color will gradually fade out due to fade(), leaving a trail behind it.
-      strand.setPixelColor( pos[i], strand.Color(
+      strand.setPixelColor( shiftPixel(pos[i]), strand.Color(
                               float(rgb[i][0]) * pow(volume / maxVol, 2.0) * knob,
                               float(rgb[i][1]) * pow(volume / maxVol, 2.0) * knob,
                               float(rgb[i][2]) * pow(volume / maxVol, 2.0) * knob)
@@ -370,7 +380,7 @@ void Snake() {
   if (volume > 0) {
 
     //Sets the dot to appropriate color and intensity
-    strand.setPixelColor(dotPos, strand.Color(
+    strand.setPixelColor(shiftPixel(dotPos), strand.Color(
                            float(split(col, 0)) * pow(volume / maxVol, 1.5) * knob,
                            float(split(col, 1)) * pow(volume / maxVol, 1.5) * knob,
                            float(split(col, 2)) * pow(volume / maxVol, 1.5) * knob)
@@ -436,7 +446,7 @@ void PaletteDance() {
 
       uint32_t col = ColorPalette(val); //get the color at "val"
 
-      strand.setPixelColor(i, strand.Color(
+      strand.setPixelColor(shiftPixel(i), strand.Color(
                              float(split(col, 0))*sinVal,
                              float(split(col, 1))*sinVal,
                              float(split(col, 2))*sinVal)
@@ -475,7 +485,7 @@ void Glitter() {
     uint32_t  col = ColorPalette(val);
 
     //We want the sparkles to be obvious, so we dim the background color.
-    strand.setPixelColor(i, strand.Color(
+    strand.setPixelColor(shiftPixel(i), strand.Color(
                            split(col, 0) / 6.0 * knob,
                            split(col, 1) / 6.0 * knob,
                            split(col, 2) / 6.0 * knob)
@@ -524,6 +534,7 @@ void Paintball() {
 
     //Pick a random spot on the strip. Random was already reseeded above, so no real need to do it again.
     dotPos = random(strand.numPixels() - 1);
+    uint32_t shifted = shiftPixel(dotPos);
 
     //Grab a random color from our palette.
     uint32_t col = ColorPalette(random(thresholds[palette]));
@@ -535,13 +546,13 @@ void Paintball() {
     for (int i = 0; i < 3; i++) colors[i] = split(col, i) * pow(volume / maxVol, 2.0) * knob;
 
     //Splatters the "paintball" on the random position.
-    strand.setPixelColor(dotPos, strand.Color(colors[0], colors[1], colors[2]));
+    strand.setPixelColor(shifted, strand.Color(colors[0], colors[1], colors[2]));
 
     //This next part places a less bright version of the same color next to the left and right of the
     //  original position, so that the bleed effect is stronger and the colors are more vibrant.
     for (int i = 0; i < 3; i++) colors[i] *= .8;
-    strand.setPixelColor(dotPos - 1, strand.Color(colors[0], colors[1], colors[2]));
-    strand.setPixelColor(dotPos + 1, strand.Color(colors[0], colors[1], colors[2]));
+    strand.setPixelColor(shifted - 1, strand.Color(colors[0], colors[1], colors[2]));
+    strand.setPixelColor(shifted + 1, strand.Color(colors[0], colors[1], colors[2]));
   }
   strand.show(); //Show lights.
 }
