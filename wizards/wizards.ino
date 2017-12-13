@@ -21,6 +21,9 @@ const uint16_t ENVELOPE_PIN   = A0;  // Pin receiving output of sound detector
 const uint16_t KNOB_PIN       = A1;  // Pin receiving output of sensitivity pot
 const uint16_t MAX_BRIGHTNESS = 25;  // Max LED brightness (0-255)
 const uint16_t NOISE_FLOOR    = 15;  // Minimum volume threshold
+const uint16_t VISUALS        = 3;
+const uint16_t BUTTON_1       = 6;   //Button 1 cycles color palettes
+const uint16_t BUTTON_2       = 5;   //Button 2 cycles visualization modes
 
 
 // not a constant, but used to create constants
@@ -49,8 +52,9 @@ uint16_t gradient = 0; //Used to iterate and loop through each color palette gra
 //  keep "gradient" from overflowing, the color functions themselves can take any positive value. For example, the
 //  largest value Rainbow() takes before looping is 1529, so "gradient" should reset after 1529, as listed.
 //     Make sure you add/remove values accordingly if you add/remove a color function in the switch-case in ColorPalette().
-uint16_t thresholds[] = {1529, 1019, 764, 764, 764, 1274};
+uint16_t thresholds[] = {1529, 512};
 uint8_t palette = 0;  //Holds the current color palette.
+uint8_t visual = 0;   //Holds the current visual being displayed.
 
 
 //For Traffic() visual
@@ -70,6 +74,13 @@ void setup()
     Serial.begin(9600);
 
     strip.begin();
+
+  //Defines the buttons pins to be input.
+  pinMode(BUTTON_1, INPUT); pinMode(BUTTON_2, INPUT); 
+
+  //Write a "HIGH" value to the button pins.
+  digitalWrite(BUTTON_1, HIGH); digitalWrite(BUTTON_2, HIGH);
+
 
     // quick test to ensure strip is working
     ColorWipe(WHITE, 10);
@@ -99,6 +110,11 @@ void loop()
     max_volume = max(max_volume, volume);
 
 
+  CyclePalette();  //Changes palette for shuffle mode or button press.
+
+  CycleVisual();   //Changes visualization for shuffle mode or button press.
+
+  
 
   //This is where "gradient" is modulated to prevent overflow.
   if (gradient > thresholds[palette]) {
@@ -122,10 +138,10 @@ void loop()
     avg_time = (((millis() / 1000.0) - time_bump) + avg_time) / 2.0;
     time_bump = millis() / 1000.0;
   }
+
+
+  Visualize();
   
-    //VisualizeMagnitude();
-    //VisualizePalettePulse();
-    VisualizeTraffic();
 
       gradient++;    //Increments gradient
 
@@ -134,6 +150,27 @@ void loop()
   delay(30);     //Paces visuals so they aren't too fast to be enjoyable
 }
 
+
+
+void Visualize() {
+  switch (visual) {
+    case 0: return VisualizePalettePulse();
+    case 1: return VisualizeTraffic();
+    case 2: return VisualizeMagnitude();
+    default: return VisualizePalettePulse();
+  }
+}
+
+//This function calls the appropriate color palette based on "palette"
+//  If a negative value is passed, returns the appropriate palette withe "gradient" passed.
+//  Otherwise returns the color palette with the passed value (useful for fitting a whole palette on the strip).
+uint32_t ColorPalette(float num) {
+  switch (palette) {
+    case 0: return (num < 0) ? Rainbow(gradient) : Rainbow(num);
+    case 1: return (num < 0) ? Xmas(gradient) : Rainbow(num);
+    default: return Rainbow(gradient);
+  }
+}
 
 // ##### Visualizations #####
 
@@ -280,15 +317,7 @@ void fade(float damper) {
   }
 }
 
-//This function calls the appropriate color palette based on "palette"
-//  If a negative value is passed, returns the appropriate palette withe "gradient" passed.
-//  Otherwise returns the color palette with the passed value (useful for fitting a whole palette on the strip).
-uint32_t ColorPalette(float num) {
-  switch (palette) {
-    case 0: return (num < 0) ? Rainbow(gradient) : Rainbow(num);
-    default: return Rainbow(gradient);
-  }
-}
+
 
 //As mentioned above, split() gives you one 8-bit color value
 //from the composite 32-bit value that the NeoPixel deals with.
@@ -325,6 +354,78 @@ uint32_t Rainbow(unsigned int i) {
   if (i > 255) return strip.Color(255 - (i % 255), 255, 0);    //yellow -> green
   return strip.Color(255, i, 0);                               //red -> yellow
 }
+
+uint32_t Xmas(uint32_t i)
+{
+    if (i > 511)
+    {
+        return Xmas(i % 512);
+    }
+    if (i > 255)
+    {
+        return strip.Color(i % 256, 255 - (i % 256), 0);  // green --> red
+    }
+    else
+    {
+        return strip.Color(255 - i, i, 0);   // red -> green
+    }
+}
+
+
+void CyclePalette() {
+
+  //IMPORTANT: Delete this whole if-block if you didn't use buttons//////////////////////////////////
+
+  //If a button is pushed, it sends a "false" reading
+  if (!digitalRead(BUTTON_1)) {
+
+    palette++;     //This is this button's purpose, to change the color palette.
+
+    //If palette is larger than the population of thresholds[], start back at 0
+    //  This is why it's important you add a threshold to the array if you add a
+    //  palette, or the program will cylce back to Rainbow() before reaching it.
+    if (palette >= sizeof(thresholds) / 2) palette = 0;
+
+    gradient %= thresholds[palette]; //Modulate gradient to prevent any overflow that may occur.
+
+    //The button is close to the microphone on my setup, so the sound of pushing it is
+    //  relatively loud to the sound detector. This causes the visual to think a loud noise
+    //  happened, so the delay simply allows the sound of the button to pass unabated.
+    delay(350);
+
+    max_volume = avg_volume;  //Set max volume to average for a fresh experience.
+  }
+
+}
+
+
+void CycleVisual() {
+
+  //IMPORTANT: Delete this whole if-block if you didn't use buttons//////////////////////////////////
+  if (!digitalRead(BUTTON_2)) {
+
+    visual++;     //The purpose of this button: change the visual mode
+
+    gradient = 0; //Prevent overflow
+
+    //Resets "visual" if there are no more visuals to cycle through.
+    if (visual > VISUALS) visual = 0;
+    //This is why you should change "VISUALS" if you add a visual, or the program loop over it.
+
+    //Resets the positions of all dots to nonexistent (-2) if you cycle to the Traffic() visual.
+    if (visual == 2) memset(pos, -2, sizeof(pos));
+
+
+    //Like before, this delay is to prevent a button press from affecting "maxVol."
+    delay(350);
+
+    max_volume = avg_volume; //Set max volume to average for a fresh experience
+  }
+
+
+}
+
+
 
 // ##### Testing Functions #####
 
