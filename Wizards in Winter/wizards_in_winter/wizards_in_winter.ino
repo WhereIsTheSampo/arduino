@@ -4,10 +4,10 @@
 #endif    
 
 #define PIN_GATE_IN          2
-#define PIN_ENVELOPE_IN     A5
-#define PIN_KNOB_IN         A2
+#define PIN_ENVELOPE_IN     A0
+#define PIN_KNOB_IN         A1
 
-#define PIN_NEO_OUT          7
+#define PIN_NEO_OUT          A5
 #define NEO_LENGTH          60
 
 #define INITIAL_NOISE_FLOOR 25
