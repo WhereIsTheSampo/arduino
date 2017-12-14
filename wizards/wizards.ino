@@ -43,6 +43,7 @@ const uint32_t OFF     = strip.Color(0, 0, 0);
 
 // ##### Globals ###############
 
+float read_vol = 0.0;
 float volume = 0.0;
 float avg_vol = 0.0; 
 float max_vol = 0.0;
@@ -91,19 +92,21 @@ void setup()
 
 void loop()
 {
-    volume = analogRead(ENVELOPE_PIN);    //Record the volume level from the sound detector
+    read_vol = analogRead(ENVELOPE_PIN);    //Record the volume level from the sound detector
     knob = analogRead(KNOB_PIN) / 1023.0; //Record how far the trimpot is twisted
 
-    if (volume < avg_vol / 2.0 || volume < NOISE_FLOOR)
+    if (read_vol < avg_vol / 5.0 || read_vol < NOISE_FLOOR)
     {
         volume = 0.0;
     }
     else
     {
-        avg_vol = (avg_vol + volume ) / 2.0;
+        volume = read_vol;
+        //avg_vol = (avg_vol + read_vol) / 2.0;
     }
-    
-    max_vol = max(max_vol, volume);
+
+    avg_vol = (avg_vol + read_vol) / 2.0;
+    max_vol = max(max_vol, read_vol);
 
     //This is where "gradient" is modulated to prevent overflow.
     if (gradient > PALETTE_THRESHOLD) 
@@ -113,8 +116,8 @@ void loop()
         //Everytime a palette gets completed is a good time to readjust "maxVol," just in case
         //  the song gets quieter; we also don't want to lose brightness intensity permanently
         //  because of one stray loud sound.
-        max_vol = (max_vol + volume) / 2.0;
-        Serial.println("Max Vol Reset");
+        //max_vol = (max_vol + volume) / 2.0;
+        //Serial.println("Max Vol Reset");
     }
 
     //If there is a decent change in volume since the last pass, average it into "avgBump"
@@ -139,17 +142,22 @@ void loop()
         time_bump = millis() / 1000.0;
     }
 
-//    Serial.println(
-//        "Vol: " + String(volume) + 
-//        ", Avg: " + String(avg_vol) + 
-//        ", Max: " + String(max_vol) + 
-//        ", Knob: " + String(knob));
+    Serial.println(
+        "Read: " + String(read_vol) +
+        ", Vol: " + String(volume) + 
+        ", Avg: " + String(avg_vol) + 
+        ", Max: " + String(max_vol) + 
+        ", Knob: " + String(knob));
 
     VisualizeTraffic();
-  
+    //VisualizePalettePulse();
+    
     gradient++;    //Increments gradient
 
     last_vol = volume; //Records current volume for next pass
+
+    max_vol = (4.0 * max_vol + avg_vol) / 5.0;
+    //avg_vol = (9.0 * avg_vol + volume) / 10.0;
 
     delay(30);     //Paces visuals so they aren't too fast to be enjoyable
 }
@@ -158,6 +166,38 @@ void loop()
 
 // ##### Visualizations #####
 
+void VisualizePalettePulse() {
+  Fade(0.75);
+  if (bump) gradient += PALETTE_THRESHOLD / 24;
+  if (volume > 0) {
+    int start = LED_HALF - (LED_HALF * (volume / max_vol));
+    int finish = LED_HALF + (LED_HALF * (volume / max_vol)) + strip.numPixels() % 2;
+    for (int i = start; i < finish; i++) {
+      uint32_t shifted = ShiftPixel(i);
+      
+      float damp = sin((i - start) * PI / float(finish - start));
+      damp = pow(damp, 2.0);
+
+      //This is the only difference from Pulse(). The color for each pixel isn't the same, but rather the
+      //  entire gradient fitted to the spread of the pulse, with some shifting from "gradient".
+      int val = PALETTE_THRESHOLD * (i - start) / (finish - start);
+      val += gradient;
+      uint32_t col = ColorPalette(val);
+
+      uint32_t col2 = strip.getPixelColor(shifted);
+      uint8_t colors[3];
+      float avgCol = 0, avgCol2 = 0;
+      for (int k = 0; k < 3; k++) {
+        colors[k] = Split(col, k) * damp * knob * pow(volume / max_vol, 2) * 0.5;
+        avgCol += colors[k];
+        avgCol2 += Split(col2, k);
+      }
+      avgCol /= 3.0, avgCol2 /= 3.0;
+      if (avgCol > avgCol2) strip.setPixelColor(shifted, strip.Color(colors[0], colors[1], colors[2]));
+    }
+  }
+  strip.show();
+}
 
 //Dots racing into each other
 void VisualizeTraffic() {
@@ -211,9 +251,9 @@ void VisualizeTraffic() {
       //Set the dot to its new position and respective color.
       //  I's old position's color will gradually fade out due to fade(), leaving a trail behind it.
       strip.setPixelColor( ShiftPixel(pos[i]), strip.Color(
-                              float(rgb[i][0]) * pow(volume / max_vol, 2.0) * knob,
-                              float(rgb[i][1]) * pow(volume / max_vol, 2.0) * knob,
-                              float(rgb[i][2]) * pow(volume / max_vol, 2.0) * knob)
+                              float(rgb[i][0]) * pow(volume / max_vol, 2.0) * knob * 0.5,
+                              float(rgb[i][1]) * pow(volume / max_vol, 2.0) * knob * 0.5,
+                              float(rgb[i][2]) * pow(volume / max_vol, 2.0) * knob * 0.5)
                           );
     }
   }
